@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pneumonia Detection with DenseNet121</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container">
+    <section class="hero card">
+      <h1>Pneumonia Detection Web App</h1>
+      <p class="subtitle">
+        Upload a chest X-ray image and run inference using <code>{{ model_path }}</code>.
+      </p>
+      <p class="meta">
+        Classes:
+        {% for class_name in class_names %}
+          <span class="chip">{{ class_name }}</span>
+        {% endfor %}
+      </p>
+    </section>
+
+    <section class="card upload-card">
+      <h2>Upload Image</h2>
+      <form id="predictForm" method="post" action="/predict" enctype="multipart/form-data">
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Upload X-ray image">
+          <input id="imageInput" class="file-input" type="file" name="image" accept="image/*" required>
+          <div class="drop-zone-content">
+            <p class="drop-title">Drop X-ray image here</p>
+            <p class="drop-subtitle">or click to browse files</p>
+            <p id="fileName" class="file-name">No file selected</p>
+          </div>
+        </div>
+
+        <div id="selectedPreviewWrap" class="selected-preview hidden">
+          <img id="selectedPreview" alt="Selected image preview">
+        </div>
+
+        <div class="actions">
+          <button id="predictButton" type="submit">Run Prediction</button>
+          <div id="loadingIndicator" class="loading-indicator" aria-live="polite">
+            <span class="spinner"></span>
+            <span>Processing image...</span>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    {% if error %}
+      <section class="card error">
+        <strong>Error:</strong> {{ error }}
+      </section>
+    {% endif %}
+
+    {% if result %}
+      {% set confidence_pct = result.confidence * 100 %}
+      <section class="grid">
+        <div class="card result-card">
+          <h2>Prediction Result</h2>
+          <div class="result-top">
+            <p class="predicted">
+              <strong>Predicted Class:</strong>
+              <span class="badge {{ 'badge-danger' if result.predicted_class == 'PNEUMONIA' else 'badge-safe' }}">
+                {{ result.predicted_class }}
+              </span>
+            </p>
+            <p class="confidence-text"><strong>Confidence:</strong> {{ '%.2f'|format(confidence_pct) }}%</p>
+          </div>
+
+          <div class="confidence-meter">
+            <div class="confidence-fill" style="width: {{ '%.2f'|format(confidence_pct) }}%;"></div>
+          </div>
+
+          <div class="probability-block">
+            {% for class_name, probability in result.probabilities.items() %}
+              {% set prob_pct = probability * 100 %}
+              <div class="prob-item {{ 'active' if class_name == result.predicted_class else '' }}">
+                <div class="prob-head">
+                  <span>{{ class_name }}</span>
+                  <span>{{ '%.2f'|format(prob_pct) }}%</span>
+                </div>
+                <div class="prob-bar">
+                  <div class="prob-fill" style="width: {{ '%.2f'|format(prob_pct) }}%;"></div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        {% if preview_data_url %}
+          <div class="card image-card">
+            <h2>Uploaded X-ray</h2>
+            <img src="{{ preview_data_url }}" alt="Uploaded X-ray preview">
+          </div>
+        {% endif %}
+      </section>
+    {% endif %}
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById("predictForm");
+      const dropZone = document.getElementById("dropZone");
+      const imageInput = document.getElementById("imageInput");
+      const fileName = document.getElementById("fileName");
+      const previewWrap = document.getElementById("selectedPreviewWrap");
+      const preview = document.getElementById("selectedPreview");
+      const predictButton = document.getElementById("predictButton");
+      const loadingIndicator = document.getElementById("loadingIndicator");
+
+      function updatePreview(file) {
+        if (!file) {
+          fileName.textContent = "No file selected";
+          previewWrap.classList.add("hidden");
+          preview.removeAttribute("src");
+          return;
+        }
+
+        fileName.textContent = file.name;
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          preview.src = event.target.result;
+          previewWrap.classList.remove("hidden");
+        };
+        reader.readAsDataURL(file);
+      }
+
+      imageInput.addEventListener("change", function () {
+        const file = imageInput.files && imageInput.files[0];
+        updatePreview(file);
+      });
+
+      dropZone.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        dropZone.classList.add("dragging");
+      });
+
+      dropZone.addEventListener("dragleave", function () {
+        dropZone.classList.remove("dragging");
+      });
+
+      dropZone.addEventListener("drop", function (event) {
+        event.preventDefault();
+        dropZone.classList.remove("dragging");
+        const files = event.dataTransfer.files;
+        if (!files || !files.length) {
+          return;
+        }
+
+        const file = files[0];
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        imageInput.files = transfer.files;
+        updatePreview(file);
+      });
+
+      dropZone.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          imageInput.click();
+        }
+      });
+
+      form.addEventListener("submit", function (event) {
+        if (!imageInput.files || imageInput.files.length === 0) {
+          event.preventDefault();
+          fileName.textContent = "Please choose an image first.";
+          return;
+        }
+
+        predictButton.disabled = true;
+        predictButton.textContent = "Predicting...";
+        loadingIndicator.classList.add("visible");
+      });
+    })();
+  </script>
+</body>
+</html>
